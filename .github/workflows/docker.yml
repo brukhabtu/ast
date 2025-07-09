@@ -54,6 +54,7 @@ jobs:
         fi
 
     - name: Build and push Docker image
+      id: build
       uses: docker/build-push-action@v5
       with:
         context: .
@@ -67,7 +68,83 @@ jobs:
           org.opencontainers.image.revision=${{ github.sha }}
           org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
 
-    - name: Print image tags
+    - name: Analyze build metrics
+      id: metrics
       run: |
-        echo "Successfully built and pushed:"
-        echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n'
+        # Get the first tag for image inspection
+        FIRST_TAG=$(echo "${{ steps.meta.outputs.tags }}" | cut -d',' -f1)
+        
+        # Get image size for amd64
+        AMD64_SIZE=$(docker manifest inspect ${FIRST_TAG} | jq -r '.manifests[] | select(.platform.architecture == "amd64") | .size' | numfmt --to=iec-i --suffix=B)
+        
+        # Get image size for arm64  
+        ARM64_SIZE=$(docker manifest inspect ${FIRST_TAG} | jq -r '.manifests[] | select(.platform.architecture == "arm64") | .size' | numfmt --to=iec-i --suffix=B)
+        
+        # Calculate build time (workflow provides this)
+        BUILD_TIME="${{ steps.build.outputs.build-time }}"
+        
+        # Save metrics
+        echo "amd64_size=${AMD64_SIZE}" >> $GITHUB_OUTPUT
+        echo "arm64_size=${ARM64_SIZE}" >> $GITHUB_OUTPUT
+        echo "build_time=${BUILD_TIME}" >> $GITHUB_OUTPUT
+        
+        # Create metrics JSON
+        cat > metrics.json <<EOF
+        {
+          "commit": "${{ github.sha }}",
+          "ref": "${{ github.ref }}",
+          "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+          "build_time_seconds": "${BUILD_TIME}",
+          "image_sizes": {
+            "amd64": "${AMD64_SIZE}",
+            "arm64": "${ARM64_SIZE}"
+          },
+          "tags": "${{ steps.meta.outputs.tags }}"
+        }
+        EOF
+
+    - name: Print build summary
+      run: |
+        echo "## 🐳 Docker Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📦 Image Sizes" >> $GITHUB_STEP_SUMMARY
+        echo "- **AMD64**: ${{ steps.metrics.outputs.amd64_size }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **ARM64**: ${{ steps.metrics.outputs.arm64_size }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🏷️ Tags" >> $GITHUB_STEP_SUMMARY
+        echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n' | sed 's/^/- /' >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### ⏱️ Build Performance" >> $GITHUB_STEP_SUMMARY
+        echo "- **Build Time**: ${{ steps.metrics.outputs.build_time }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Cache**: ${{ steps.build.outputs.cache-hit && 'Hit' || 'Miss' }}" >> $GITHUB_STEP_SUMMARY
+
+    - name: Upload metrics artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: docker-metrics-${{ github.sha }}
+        path: metrics.json
+        retention-days: 90
+
+    - name: Comment PR with metrics (if PR)
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const metrics = require('./metrics.json');
+          const comment = `## 🐳 Docker Build Metrics
+          
+          **Image Sizes:**
+          - AMD64: ${metrics.image_sizes.amd64}
+          - ARM64: ${metrics.image_sizes.arm64}
+          
+          **Build Time:** ${metrics.build_time_seconds}
+          
+          **Commit:** \`${metrics.commit.substring(0, 8)}\`
+          `;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
