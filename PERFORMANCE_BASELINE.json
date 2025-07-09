@@ -1,0 +1,87 @@
+{
+  "suite_name": "AST Library Performance Baseline",
+  "start_time": "2025-07-08T16:40:51.787412",
+  "end_time": "2025-07-08T16:40:53.564824",
+  "total_duration_seconds": 1.777412,
+  "timing_results": [
+    {
+      "operation": "parse_all_project_files",
+      "total_seconds": 1.2622106539929518,
+      "iterations": 3,
+      "average_seconds": 0.4207368846643173,
+      "metadata": {
+        "iterations": 3,
+        "individual_times": [
+          0.38957515500078443,
+          0.478854817993124,
+          0.3937806809990434
+        ],
+        "min_time": 0.38957515500078443,
+        "max_time": 0.478854817993124,
+        "median_time": 0.3937806809990434,
+        "stdev_time": 0.05037551233525299
+      }
+    },
+    {
+      "operation": "count_ast_nodes_sample",
+      "total_seconds": 0.20500651199836284,
+      "iterations": 5,
+      "average_seconds": 0.04100130239967257,
+      "metadata": {
+        "iterations": 5,
+        "individual_times": [
+          0.042044638001243584,
+          0.041799682992859744,
+          0.03931384300813079,
+          0.03936551899823826,
+          0.042482828997890465
+        ],
+        "min_time": 0.03931384300813079,
+        "max_time": 0.042482828997890465,
+        "median_time": 0.041799682992859744,
+        "stdev_time": 0.0015365699093127121
+      }
+    },
+    {
+      "operation": "extract_unique_imports",
+      "total_seconds": 0.26719238399527967,
+      "iterations": 3,
+      "average_seconds": 0.08906412799842656,
+      "metadata": {
+        "iterations": 3,
+        "individual_times": [
+          0.0867820639978163,
+          0.0895806479966268,
+          0.09082967200083658
+        ],
+        "min_time": 0.0867820639978163,
+        "max_time": 0.09082967200083658,
+        "median_time": 0.0895806479966268,
+        "stdev_time": 0.0020726498300325715
+      }
+    }
+  ],
+  "memory_results": [
+    {
+      "operation": "parse_all_project_files",
+      "start_memory_mb": 0.0,
+      "end_memory_mb": 0.058730125427246094,
+      "peak_memory_mb": 1.6825017929077148,
+      "memory_delta_mb": 0.058730125427246094,
+      "allocated_blocks": 1073
+    },
+    {
+      "operation": "extract_unique_imports",
+      "start_memory_mb": 0.0,
+      "end_memory_mb": 0.0026035308837890625,
+      "peak_memory_mb": 1.3934659957885742,
+      "memory_delta_mb": 0.0026035308837890625,
+      "allocated_blocks": 46
+    }
+  ],
+  "summary": {
+    "total_operations": 3,
+    "total_time": 1.7344095499865944,
+    "operations_with_memory": 2
+  }
+}
