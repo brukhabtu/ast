@@ -1,0 +1,73 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches:
+      - '*'
+    tags:
+      - 'v*'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to the Container registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      run: |
+        # For releases (tags), use version and SHA
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+        # For branches, use branch name and SHA
+        else
+          BRANCH=${GITHUB_REF#refs/heads/}
+          # Replace / with - in branch names for valid Docker tags
+          BRANCH=${BRANCH//\//-}
+          echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${BRANCH},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+        fi
+        
+        # Always add latest tag for main branch
+        if [[ $GITHUB_REF == refs/heads/main ]]; then
+          CURRENT_TAGS=$(cat $GITHUB_OUTPUT | grep "tags=" | cut -d= -f2-)
+          echo "tags=${CURRENT_TAGS},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        labels: |
+          org.opencontainers.image.source=${{ github.event.repository.html_url }}
+          org.opencontainers.image.revision=${{ github.sha }}
+          org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+
+    - name: Print image tags
+      run: |
+        echo "Successfully built and pushed:"
+        echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n'
