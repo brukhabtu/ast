@@ -21,7 +21,6 @@ build/
 htmlcov/
 .tox/
 .hypothesis/
-tests/
 
 # Virtual environments
 venv/
