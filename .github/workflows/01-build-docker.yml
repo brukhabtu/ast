@@ -1,4 +1,12 @@
-name: Build and Push Docker Image
+# ============================================================================
+# Docker Build Pipeline
+# ============================================================================
+# Purpose: Build and push multi-platform Docker images to GitHub Container Registry
+# Triggers: On push to any branch or version tags
+# Outputs: Docker images with branch/SHA tags or version/SHA tags for releases
+# ============================================================================
+
+name: Build Docker Image
 
 on:
   push:

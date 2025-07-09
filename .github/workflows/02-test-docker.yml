@@ -1,8 +1,16 @@
+# ============================================================================
+# Test Execution Pipeline
+# ============================================================================
+# Purpose: Run unit, integration, and e2e tests using the Docker images
+# Triggers: After successful Docker build or manual dispatch
+# Tests: Executes pytest inside Docker containers for consistent environment
+# ============================================================================
+
 name: Run Tests in Docker
 
 on:
   workflow_run:
-    workflows: ["Build and Push Docker Image"]
+    workflows: ["Build Docker Image"]
     types:
       - completed
   workflow_dispatch:

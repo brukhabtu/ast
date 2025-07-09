@@ -1,3 +1,11 @@
+# ============================================================================
+# Claude AI Code Review
+# ============================================================================
+# Purpose: Automated code review using Claude AI on pull requests
+# Triggers: On PR open or update
+# Features: Provides AI-powered code review feedback
+# ============================================================================
+
 name: Claude Code Review
 
 on:
