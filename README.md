@@ -122,15 +122,16 @@ pytest
 pytest --cov=astlib
 
 # Run benchmarks
-python run_benchmarks.py
+python scripts/run_benchmarks.py
 ```
 
 ## Documentation
 
-- [Architecture Overview](ARCHITECTURAL_PATTERNS.md)
-- [CLI Usage Guide](CLI_USAGE.md) 
-- [Testing Guide](TESTING_GUIDE.md)
-- [Project Structure](PROJECT_STRUCTURE.md)
+- [Documentation Index](docs/README.md) - All documentation
+- [Architecture Overview](docs/guides/ARCHITECTURAL_PATTERNS.md)
+- [CLI Usage Guide](docs/guides/CLI_USAGE.md) 
+- [Testing Guide](docs/guides/TESTING_GUIDE.md)
+- [Project Structure](docs/guides/PROJECT_STRUCTURE.md)
 
 ## License
 
