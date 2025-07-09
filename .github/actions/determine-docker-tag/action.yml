@@ -1,0 +1,29 @@
+name: 'Determine Docker Tag'
+description: 'Determines the Docker image tag based on event type and inputs'
+inputs:
+  manual_tag:
+    description: 'Manual tag override (for workflow_dispatch)'
+    required: false
+    default: ''
+  workflow_run_sha:
+    description: 'SHA from workflow run event'
+    required: false
+    default: ''
+outputs:
+  tag:
+    description: 'The determined Docker image tag'
+    value: ${{ steps.determine.outputs.tag }}
+runs:
+  using: 'composite'
+  steps:
+    - name: Determine tag
+      id: determine
+      shell: bash
+      run: |
+        if [[ -n "${{ inputs.manual_tag }}" ]]; then
+          echo "tag=${{ inputs.manual_tag }}" >> $GITHUB_OUTPUT
+        else
+          # Use the SHA from the workflow that triggered us
+          SHA="${{ inputs.workflow_run_sha || github.sha }}"
+          echo "tag=sha-${SHA:0:8}" >> $GITHUB_OUTPUT
+        fi

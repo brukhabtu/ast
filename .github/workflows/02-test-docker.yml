@@ -1,0 +1,251 @@
+# ============================================================================
+# Test Execution Pipeline
+# ============================================================================
+# Purpose: Run unit, integration, and e2e tests using the Docker images
+# Triggers: After successful Docker build or manual dispatch
+# Tests: Executes pytest inside Docker containers for consistent environment
+# ============================================================================
+
+name: Run Tests in Docker
+
+on:
+  workflow_run:
+    workflows: ["Build Docker Image"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Docker image tag to test'
+        required: false
+        default: 'main'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  unit-tests:
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Log in to the Container registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Determine image tag
+      id: tag
+      uses: ./.github/actions/determine-docker-tag
+      with:
+        manual_tag: ${{ github.event_name == 'workflow_dispatch' && inputs.image_tag || '' }}
+        workflow_run_sha: ${{ github.event.workflow_run.head_sha }}
+
+    - name: Run unit tests
+      run: |
+        docker run --rm \
+          --user 1000:1000 \
+          -v ${{ github.workspace }}:/workspace \
+          -w /workspace \
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }} \
+          pytest tests/ -m unit -v --tb=short --junit-xml=test-results-unit.xml --cov=astlib --cov-report=xml:coverage-unit.xml --cov-report=html:htmlcov-unit
+
+    - name: Upload unit test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: unit-test-results
+        path: |
+          .coverage*
+          coverage*.xml
+          htmlcov*
+          test-results*.xml
+          pytest-*.xml
+        if-no-files-found: warn
+        retention-days: 30
+
+  integration-tests:
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Log in to the Container registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Determine image tag
+      id: tag
+      uses: ./.github/actions/determine-docker-tag
+      with:
+        manual_tag: ${{ github.event_name == 'workflow_dispatch' && inputs.image_tag || '' }}
+        workflow_run_sha: ${{ github.event.workflow_run.head_sha }}
+
+    - name: Run integration tests
+      run: |
+        docker run --rm \
+          --user 1000:1000 \
+          -v ${{ github.workspace }}:/workspace \
+          -w /workspace \
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }} \
+          pytest tests/ -m integration -v --tb=short --junit-xml=test-results-integration.xml
+
+    - name: Upload integration test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: integration-test-results
+        path: |
+          test-results*.xml
+          pytest-*.xml
+        if-no-files-found: warn
+        retention-days: 30
+
+  e2e-tests:
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Log in to the Container registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Determine image tag
+      id: tag
+      uses: ./.github/actions/determine-docker-tag
+      with:
+        manual_tag: ${{ github.event_name == 'workflow_dispatch' && inputs.image_tag || '' }}
+        workflow_run_sha: ${{ github.event.workflow_run.head_sha }}
+
+    - name: Setup test repository
+      run: |
+        # Copy e2e test fixtures
+        mkdir -p test_repos/sample_project
+        cp tests/fixtures/e2e/sample_project.py test_repos/sample_project/
+
+    - name: Run e2e tests
+      run: |
+        docker run --rm \
+          --user 1000:1000 \
+          -v ${{ github.workspace }}:/workspace \
+          -w /workspace \
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }} \
+          pytest tests/ -m e2e -v --tb=short --junit-xml=test-results-e2e.xml
+
+    - name: Upload e2e test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: e2e-test-results
+        path: |
+          test-results*.xml
+          pytest-*.xml
+        if-no-files-found: warn
+        retention-days: 30
+
+  test-summary:
+    needs: [unit-tests, integration-tests, e2e-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+
+    steps:
+    - name: Download all test results
+      uses: actions/download-artifact@v4
+      with:
+        pattern: '*-test-results'
+        merge-multiple: true
+    
+    - name: Parse test results
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: Test Results
+        path: 'test-results-*.xml'
+        reporter: java-junit
+        fail-on-error: false
+
+    - name: Generate test summary
+      run: |
+        echo "## 🧪 Test Results Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        echo "### Test Status" >> $GITHUB_STEP_SUMMARY
+        echo "- **Unit Tests**: ${{ needs.unit-tests.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Integration Tests**: ${{ needs.integration-tests.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **E2E Tests**: ${{ needs.e2e-tests.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [[ "${{ needs.unit-tests.result }}" == "success" && \
+              "${{ needs.integration-tests.result }}" == "success" && \
+              "${{ needs.e2e-tests.result }}" == "success" ]]; then
+          echo "✅ All tests passed!" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ Some tests failed. Please check the individual test results." >> $GITHUB_STEP_SUMMARY
+        fi
+
+    - name: Comment PR with test results (if PR)
+      if: github.event.workflow_run.event == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const summary = `## 🧪 Test Results
+          
+          | Test Type | Status |
+          |-----------|--------|
+          | Unit Tests | ${{ needs.unit-tests.result }} |
+          | Integration Tests | ${{ needs.integration-tests.result }} |
+          | E2E Tests | ${{ needs.e2e-tests.result }} |
+          
+          **Docker Image**: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.event.workflow_run.head_sha }}\`
+          `;
+          
+          // Find the PR number from the workflow run
+          const { data: pulls } = await github.rest.pulls.list({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            head: `${context.repo.owner}:${context.payload.workflow_run.head_branch}`,
+            state: 'open'
+          });
+          
+          if (pulls.length > 0) {
+            await github.rest.issues.createComment({
+              issue_number: pulls[0].number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+          }

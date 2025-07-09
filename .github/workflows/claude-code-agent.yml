@@ -1,3 +1,11 @@
+# ============================================================================
+# Claude Code Agent
+# ============================================================================
+# Purpose: Interactive Claude AI agent for issue and PR assistance
+# Triggers: On issue/PR comments, assignments, and reviews
+# Features: Responds to mentions and helps with code tasks
+# ============================================================================
+
 name: Claude Code
 
 on:

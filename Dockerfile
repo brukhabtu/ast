@@ -17,9 +17,10 @@ RUN apt-get update && apt-get install -y \
 # Copy project files
 COPY pyproject.toml README.md ./
 COPY astlib ./astlib
+COPY tests ./tests
 
-# Install the package
-RUN pip install --no-cache-dir -e .
+# Install the package with test dependencies
+RUN pip install --no-cache-dir -e ".[dev]"
 
 # Set up non-root user with explicit UID/GID
 RUN groupadd -g 1000 astuser && \
