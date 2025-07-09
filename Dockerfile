@@ -1,4 +1,11 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
+
+# OCI Image Format Specification labels
+LABEL org.opencontainers.image.title="AST CLI"
+LABEL org.opencontainers.image.description="AST tools for navigating Python codebases"
+LABEL org.opencontainers.image.authors="AST Contributors"
+LABEL org.opencontainers.image.source="https://github.com/brukhabtu/ast"
+LABEL org.opencontainers.image.documentation="https://github.com/brukhabtu/ast/blob/main/README.md"
 
 WORKDIR /app
 
@@ -14,8 +21,10 @@ COPY astlib ./astlib
 # Install the package
 RUN pip install --no-cache-dir -e .
 
-# Set up non-root user
-RUN useradd -m -s /bin/bash astuser && chown -R astuser:astuser /app
+# Set up non-root user with explicit UID/GID
+RUN groupadd -g 1000 astuser && \
+    useradd -m -u 1000 -g 1000 -s /bin/bash astuser && \
+    chown -R astuser:astuser /app
 USER astuser
 
 # Default command

@@ -38,13 +38,10 @@ ENV/
 test_repos/
 demo_output/
 validation/
-examples/
+docs/
+.github/
 *.md
 !README.md
-*.yml
-*.yaml
-*.json
-!pyproject.toml
 
 # Temporary files
 *.log

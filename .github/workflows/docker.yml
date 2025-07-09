@@ -49,7 +49,7 @@ jobs:
         
         # Always add latest tag for main branch
         if [[ $GITHUB_REF == refs/heads/main ]]; then
-          CURRENT_TAGS=$(cat $GITHUB_OUTPUT | grep "tags=" | cut -d= -f2-)
+          CURRENT_TAGS=$(grep "tags=" $GITHUB_OUTPUT 2>/dev/null | cut -d= -f2- || echo "")
           echo "tags=${CURRENT_TAGS},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_OUTPUT
         fi
 
