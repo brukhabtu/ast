@@ -1,4 +1,4 @@
-name: Run Tests
+name: Run Tests in Docker
 
 on:
   workflow_run:
@@ -42,7 +42,8 @@ jobs:
           echo "tag=${{ inputs.image_tag }}" >> $GITHUB_OUTPUT
         else
           # Use the SHA from the workflow that triggered us
-          echo "tag=sha-${{ github.event.workflow_run.head_sha || github.sha }}" | cut -c1-11 >> $GITHUB_OUTPUT
+          SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+          echo "tag=sha-${SHA:0:8}" >> $GITHUB_OUTPUT
         fi
 
     - name: Run unit tests
