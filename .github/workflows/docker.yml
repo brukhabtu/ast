@@ -1,0 +1,150 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches:
+      - '*'
+    tags:
+      - 'v*'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to the Container registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      run: |
+        # For releases (tags), use version and SHA
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+        # For branches, use branch name and SHA
+        else
+          BRANCH=${GITHUB_REF#refs/heads/}
+          # Replace / with - in branch names for valid Docker tags
+          BRANCH=${BRANCH//\//-}
+          echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${BRANCH},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+        fi
+        
+        # Always add latest tag for main branch
+        if [[ $GITHUB_REF == refs/heads/main ]]; then
+          CURRENT_TAGS=$(grep "tags=" $GITHUB_OUTPUT 2>/dev/null | cut -d= -f2- || echo "")
+          echo "tags=${CURRENT_TAGS},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Build and push Docker image
+      id: build
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        labels: |
+          org.opencontainers.image.source=${{ github.event.repository.html_url }}
+          org.opencontainers.image.revision=${{ github.sha }}
+          org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+
+    - name: Analyze build metrics
+      id: metrics
+      run: |
+        # Get the first tag for image inspection
+        FIRST_TAG=$(echo "${{ steps.meta.outputs.tags }}" | cut -d',' -f1)
+        
+        # Get image size for amd64
+        AMD64_SIZE=$(docker manifest inspect ${FIRST_TAG} | jq -r '.manifests[] | select(.platform.architecture == "amd64") | .size' | numfmt --to=iec-i --suffix=B)
+        
+        # Get image size for arm64  
+        ARM64_SIZE=$(docker manifest inspect ${FIRST_TAG} | jq -r '.manifests[] | select(.platform.architecture == "arm64") | .size' | numfmt --to=iec-i --suffix=B)
+        
+        # Calculate build time (workflow provides this)
+        BUILD_TIME="${{ steps.build.outputs.build-time }}"
+        
+        # Save metrics
+        echo "amd64_size=${AMD64_SIZE}" >> $GITHUB_OUTPUT
+        echo "arm64_size=${ARM64_SIZE}" >> $GITHUB_OUTPUT
+        echo "build_time=${BUILD_TIME}" >> $GITHUB_OUTPUT
+        
+        # Create metrics JSON
+        cat > metrics.json <<EOF
+        {
+          "commit": "${{ github.sha }}",
+          "ref": "${{ github.ref }}",
+          "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+          "build_time_seconds": "${BUILD_TIME}",
+          "image_sizes": {
+            "amd64": "${AMD64_SIZE}",
+            "arm64": "${ARM64_SIZE}"
+          },
+          "tags": "${{ steps.meta.outputs.tags }}"
+        }
+        EOF
+
+    - name: Print build summary
+      run: |
+        echo "## 🐳 Docker Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📦 Image Sizes" >> $GITHUB_STEP_SUMMARY
+        echo "- **AMD64**: ${{ steps.metrics.outputs.amd64_size }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **ARM64**: ${{ steps.metrics.outputs.arm64_size }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🏷️ Tags" >> $GITHUB_STEP_SUMMARY
+        echo "${{ steps.meta.outputs.tags }}" | tr ',' '\n' | sed 's/^/- /' >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### ⏱️ Build Performance" >> $GITHUB_STEP_SUMMARY
+        echo "- **Build Time**: ${{ steps.metrics.outputs.build_time }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Cache**: ${{ steps.build.outputs.cache-hit && 'Hit' || 'Miss' }}" >> $GITHUB_STEP_SUMMARY
+
+    - name: Upload metrics artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: docker-metrics-${{ github.sha }}
+        path: metrics.json
+        retention-days: 90
+
+    - name: Comment PR with metrics (if PR)
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const metrics = require('./metrics.json');
+          const comment = `## 🐳 Docker Build Metrics
+          
+          **Image Sizes:**
+          - AMD64: ${metrics.image_sizes.amd64}
+          - ARM64: ${metrics.image_sizes.arm64}
+          
+          **Build Time:** ${metrics.build_time_seconds}
+          
+          **Commit:** \`${metrics.commit.substring(0, 8)}\`
+          `;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
