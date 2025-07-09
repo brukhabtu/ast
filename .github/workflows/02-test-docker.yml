@@ -28,6 +28,7 @@ jobs:
   unit-tests:
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: read
@@ -45,22 +46,19 @@ jobs:
 
     - name: Determine image tag
       id: tag
-      run: |
-        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-          echo "tag=${{ inputs.image_tag }}" >> $GITHUB_OUTPUT
-        else
-          # Use the SHA from the workflow that triggered us
-          SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
-          echo "tag=sha-${SHA:0:8}" >> $GITHUB_OUTPUT
-        fi
+      uses: ./.github/actions/determine-docker-tag
+      with:
+        manual_tag: ${{ github.event_name == 'workflow_dispatch' && inputs.image_tag || '' }}
+        workflow_run_sha: ${{ github.event.workflow_run.head_sha }}
 
     - name: Run unit tests
       run: |
         docker run --rm \
+          --user 1000:1000 \
           -v ${{ github.workspace }}:/workspace \
           -w /workspace \
           ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }} \
-          pytest tests/ -m unit -v --tb=short
+          pytest tests/ -m unit -v --tb=short --junit-xml=test-results-unit.xml --cov=astlib --cov-report=xml:coverage-unit.xml --cov-report=html:htmlcov-unit
 
     - name: Upload unit test results
       if: always()
@@ -68,14 +66,18 @@ jobs:
       with:
         name: unit-test-results
         path: |
-          .coverage
-          htmlcov/
-          test-results.xml
+          .coverage*
+          coverage*.xml
+          htmlcov*
+          test-results*.xml
+          pytest-*.xml
+        if-no-files-found: warn
         retention-days: 30
 
   integration-tests:
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: read
@@ -93,20 +95,19 @@ jobs:
 
     - name: Determine image tag
       id: tag
-      run: |
-        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-          echo "tag=${{ inputs.image_tag }}" >> $GITHUB_OUTPUT
-        else
-          echo "tag=sha-${{ github.event.workflow_run.head_sha || github.sha }}" | cut -c1-11 >> $GITHUB_OUTPUT
-        fi
+      uses: ./.github/actions/determine-docker-tag
+      with:
+        manual_tag: ${{ github.event_name == 'workflow_dispatch' && inputs.image_tag || '' }}
+        workflow_run_sha: ${{ github.event.workflow_run.head_sha }}
 
     - name: Run integration tests
       run: |
         docker run --rm \
+          --user 1000:1000 \
           -v ${{ github.workspace }}:/workspace \
           -w /workspace \
           ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }} \
-          pytest tests/ -m integration -v --tb=short
+          pytest tests/ -m integration -v --tb=short --junit-xml=test-results-integration.xml
 
     - name: Upload integration test results
       if: always()
@@ -114,12 +115,15 @@ jobs:
       with:
         name: integration-test-results
         path: |
-          test-results.xml
+          test-results*.xml
+          pytest-*.xml
+        if-no-files-found: warn
         retention-days: 30
 
   e2e-tests:
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: read
@@ -137,41 +141,25 @@ jobs:
 
     - name: Determine image tag
       id: tag
-      run: |
-        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-          echo "tag=${{ inputs.image_tag }}" >> $GITHUB_OUTPUT
-        else
-          echo "tag=sha-${{ github.event.workflow_run.head_sha || github.sha }}" | cut -c1-11 >> $GITHUB_OUTPUT
-        fi
+      uses: ./.github/actions/determine-docker-tag
+      with:
+        manual_tag: ${{ github.event_name == 'workflow_dispatch' && inputs.image_tag || '' }}
+        workflow_run_sha: ${{ github.event.workflow_run.head_sha }}
 
     - name: Setup test repository
       run: |
-        # Create a test repository for e2e tests
+        # Copy e2e test fixtures
         mkdir -p test_repos/sample_project
-        cd test_repos/sample_project
-        cat > sample.py << 'EOF'
-        class Calculator:
-            def add(self, a, b):
-                return a + b
-            
-            def subtract(self, a, b):
-                return a - b
-        
-        def main():
-            calc = Calculator()
-            print(calc.add(5, 3))
-        
-        if __name__ == "__main__":
-            main()
-        EOF
+        cp tests/fixtures/e2e/sample_project.py test_repos/sample_project/
 
     - name: Run e2e tests
       run: |
         docker run --rm \
+          --user 1000:1000 \
           -v ${{ github.workspace }}:/workspace \
           -w /workspace \
           ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }} \
-          pytest tests/ -m e2e -v --tb=short
+          pytest tests/ -m e2e -v --tb=short --junit-xml=test-results-e2e.xml
 
     - name: Upload e2e test results
       if: always()
@@ -179,13 +167,16 @@ jobs:
       with:
         name: e2e-test-results
         path: |
-          test-results.xml
+          test-results*.xml
+          pytest-*.xml
+        if-no-files-found: warn
         retention-days: 30
 
   test-summary:
     needs: [unit-tests, integration-tests, e2e-tests]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       checks: write
@@ -197,6 +188,15 @@ jobs:
       with:
         pattern: '*-test-results'
         merge-multiple: true
+    
+    - name: Parse test results
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: Test Results
+        path: 'test-results-*.xml'
+        reporter: java-junit
+        fail-on-error: false
 
     - name: Generate test summary
       run: |
