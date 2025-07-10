@@ -661,17 +661,17 @@ Examples:
             return 1
         
         # Build index
-        index = ProjectIndex()
-        
         if path.is_file():
             # Index single file's directory
             print(f"Indexing file's directory...", file=sys.stderr)
-            index.build_index(path.parent)
-            symbols = index.find_symbols_in_file(path)
+            index = ProjectIndex(str(path.parent))
+            index.build_index()
+            symbols = index.find_symbols_in_file(str(path))
         else:
             # Index whole directory
             print(f"Building index...", file=sys.stderr)
-            index.build_index(path)
+            index = ProjectIndex(str(path))
+            index.build_index()
             symbols = index.get_all_symbols()
         
         # Filter by type if requested
