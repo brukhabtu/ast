@@ -380,7 +380,7 @@ class TestSymbolTableEdgeCases:
         assert len(table.find_by_name("anything")) == 0
         assert len(table.find_by_type(SymbolType.FUNCTION)) == 0
         assert len(table.find_by_file("any.py")) == 0
-        assert table.find_by_qualified_name("any.name") is None
+        assert len(table.find_by_qualified_name("any.name")) == 0
     
     def test_duplicate_names(self):
         """Test handling of duplicate symbol names."""
@@ -430,6 +430,6 @@ class TestSymbolTableEdgeCases:
         qualified_name = ".".join([f"Nested{i}" for i in range(10)])
         qualified_name = f"RootClass.{qualified_name}"
         
-        result = table.find_by_qualified_name(qualified_name)
-        assert result is not None
-        assert result.symbol.name == "Nested9"
+        results = table.find_by_qualified_name(qualified_name)
+        assert len(results) > 0
+        assert results[0].symbol.name == "Nested9"

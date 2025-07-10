@@ -251,6 +251,11 @@ class TestPropertyBasedTesting:
         if identifier[0].isdigit():
             return
         
+        # Skip Python keywords
+        import keyword
+        if keyword.iskeyword(identifier):
+            return
+        
         # Arrange
         code = f"{identifier} = 42"
         parser = ErrorRecoveringParser(code)
@@ -270,6 +275,11 @@ class TestPropertyBasedTesting:
     ))
     def test_parse_function_with_arguments(self, arg_names):
         """Test parsing functions with various argument lists."""
+        # Skip if any argument is a keyword
+        import keyword
+        if any(keyword.iskeyword(arg) for arg in arg_names):
+            return
+            
         # Arrange
         args = ", ".join(arg_names)
         code = f"def test_func({args}):\n    pass"
